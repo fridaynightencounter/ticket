@@ -21,7 +21,7 @@ CSV_FILE        = "tickets.csv"
 HEADER_IMAGE    = "EC26_Eventbrite_Header_Fri-Night_2.png"
 OUTPUT_DIR      = "tickets"
 
-# Column positions (0-indexed) — no header row
+# Column positions (0-indexed) — no header row, comma separated
 COL_FIRSTNAME   = 0
 COL_BARCODE     = 1
 COL_PHONE       = 2
@@ -39,7 +39,6 @@ def load_font(path, size):
         return ImageFont.truetype(path, size)
     except:
         try:
-            # Mac system fonts fallback
             return ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", size)
         except:
             return ImageFont.load_default()
@@ -65,7 +64,6 @@ CARD_H = header_h + top_text_h + qr_section_h + bottom_text_h
 
 # ── TICKET GENERATOR ───────────────────────────────────────────────────────────
 def generate_ticket(barcode_str, output_path):
-    # QR code
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_H,
@@ -77,42 +75,33 @@ def generate_ticket(barcode_str, output_path):
     qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGBA")
     qr_img = qr_img.resize((QR_SIZE, QR_SIZE), Image.LANCZOS)
 
-    # Canvas
     canvas = Image.new("RGBA", (CARD_W, CARD_H), BG_COLOR)
     draw   = ImageDraw.Draw(canvas)
 
-    # Header
     canvas.paste(header_img, (0, 0), header_img)
 
-    # Accent divider
     y = header_h
     draw.rectangle([(0, y), (CARD_W, y + 3)], fill=ACCENT)
 
-    # "YOUR TICKET" label
     y += 18
     draw.text((CARD_W // 2, y + 10), "YOUR TICKET", font=font_medium,
               fill="#FFFFFF", anchor="mt")
 
-    # QR code
     y += top_text_h
     qr_x = (CARD_W - QR_SIZE) // 2
     canvas.paste(qr_img, (qr_x, y + PADDING // 2), qr_img)
 
-    # Barcode number
     y_barcode = y + PADDING // 2 + QR_SIZE + 12
     draw.text((CARD_W // 2, y_barcode), barcode_str, font=font_tiny,
               fill="#AAAAAA", anchor="mt")
 
-    # "See you there"
     y_footer = y_barcode + 36
     draw.text((CARD_W // 2, y_footer), "See you there 🙌", font=font_medium,
               fill="#FFFFFF", anchor="mt")
 
-    # CRC London footer
     draw.text((CARD_W // 2, y_footer + 48), "crclondon.com", font=font_small,
               fill="#666666", anchor="mt")
 
-    # Save
     canvas.convert("RGB").save(output_path, "JPEG", quality=92)
 
 
@@ -123,7 +112,7 @@ def main():
     wassenger_rows = []
 
     with open(CSV_FILE, newline="", encoding="utf-8-sig") as f:
-        reader = csv.reader(f, delimiter="\t")
+        reader = csv.reader(f, delimiter=",")
         rows = [
             {"firstname": r[COL_FIRSTNAME], "barcode": r[COL_BARCODE], "phone": r[COL_PHONE]}
             for r in reader
@@ -131,7 +120,10 @@ def main():
         ]
 
     total = len(rows)
-    print(f"Generating {total} tickets...\n")
+    print(f"Found {total} rows in CSV\n")
+
+    skipped = 0
+    generated = 0
 
     for i, row in enumerate(rows, 1):
         barcode   = row["barcode"].strip()
@@ -141,10 +133,15 @@ def main():
         filename    = f"{barcode}.jpg"
         output_path = os.path.join(OUTPUT_DIR, filename)
 
-        generate_ticket(barcode, output_path)
+        # Skip if image already exists
+        if os.path.exists(output_path):
+            skipped += 1
+        else:
+            generate_ticket(barcode, output_path)
+            generated += 1
 
-        # ⚠️ Update YOUR_USERNAME and YOUR_REPO before final run
-        ticket_url = f"https://YOUR_USERNAME.github.io/YOUR_REPO/tickets/{filename}"
+        # GitHub Pages URL
+        ticket_url = f"https://fridaynightencounter.github.io/ticket/tickets/{filename}"
 
         wassenger_rows.append({
             "phone": phone,
@@ -153,7 +150,7 @@ def main():
         })
 
         if i % 100 == 0 or i == total:
-            print(f"  [{i}/{total}] done")
+            print(f"  [{i}/{total}] — generated: {generated}, skipped: {skipped}")
 
     # Write Wassenger-ready CSV
     wassenger_csv = "wassenger_import.csv"
@@ -163,10 +160,10 @@ def main():
         writer.writerows(wassenger_rows)
 
     print(f"\n✅ All done!")
-    print(f"   Tickets saved to  → ./{OUTPUT_DIR}/")
+    print(f"   Generated: {generated} new tickets")
+    print(f"   Skipped:   {skipped} existing tickets")
+    print(f"   Tickets folder    → ./{OUTPUT_DIR}/")
     print(f"   Wassenger CSV     → ./{wassenger_csv}")
-    print(f"\n⚠️  Remember to update YOUR_USERNAME and YOUR_REPO in the script")
-    print(f"   then re-run to regenerate wassenger_import.csv with correct URLs")
 
 
 if __name__ == "__main__":
